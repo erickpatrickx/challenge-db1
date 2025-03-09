@@ -1,0 +1,95 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:latest
+    container_name: postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: db1-challenge
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app-network
+
+  localstack:
+    image: localstack/localstack
+    container_name: localstack
+    restart: always
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,sqs
+      - DEFAULT_REGION=us-east-1
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - PERSISTENCE=1
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - localstack_data:/var/lib/localstack
+    networks:
+      - app-network
+
+
+
+  localstack-init:
+    image: amazon/aws-cli
+    container_name: localstack-init
+    depends_on:
+      - localstack
+    environment:
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_REGION=us-east-1
+      - AWS_DEFAULT_REGION=us-east-1
+    entrypoint: >
+      sh -c "
+      sleep 3;
+      aws --endpoint-url=http://localstack:4566 s3 mb s3://challenge-bucket --region us-east-1;
+      aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name challenge-product-dlq;
+      DLQ_ARN=\$(aws --endpoint-url=http://localstack:4566 sqs get-queue-attributes --queue-url http://localstack:4566/000000000000/challenge-product-dlq --attribute-names QueueArn --query Attributes.QueueArn --output text);
+      aws --endpoint-url=http://localstack:4566 sqs create-queue --queue-name challenge-product-queue --attributes '{\"RedrivePolicy\": \"{\\\"deadLetterTargetArn\\\": \\\"'$DLQ_ARN'\\\", \\\"maxReceiveCount\\\": \\\"5\\\"}\"}';"   
+
+    networks:
+      - app-network
+    restart: "no"
+
+  app:
+    image: openjdk:21-jdk-slim
+    container_name: app
+    depends_on:
+      - postgres
+
+    ports:
+      - "8080:8080"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/db1-challenge
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_SQS_ENDPOINT: http://localstack:4566
+
+    volumes:
+      - .:/app
+    working_dir: /app
+    command: [ "./mvnw", "spring-boot:run" ]
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+  localstack_data:
+
+networks:
+  app-network:
+    driver: bridge

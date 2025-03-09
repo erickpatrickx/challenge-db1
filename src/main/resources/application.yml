@@ -1,0 +1,28 @@
+spring:
+  application:
+    name: challenge
+  datasource:
+    url: jdbc:postgresql://localhost:5432/db1-challenge
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+    show-sql: true
+    defer-datasource-initialization: true
+  sql:
+    init:
+      mode: always
+
+aws:
+  s3:
+    endpoint: http://s3.localhost.localstack.cloud:4566
+    bucket-name: challenge-bucket
+    region: us-east-1
+  sqs:
+    endpoint: http://sqs.us-east-1.localhost.localstack.cloud:4566
+    queue-url-product: /000000000000/challenge-product-queue
